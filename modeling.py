@@ -16,11 +16,12 @@ from sklearn.cluster import SpectralClustering
 from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.neighbors import kneighbors_graph
 from sklearn.cluster import MiniBatchKMeans
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import OPTICS, DBSCAN
 import numpy as np
 from scipy.spatial import distance
 from sklearn.utils import parallel_backend
 import joblib
+import prince
 
 ## prepare data
 actor_event = pd.read_csv('actor&event.csv')[['data_id', 'event_type', 'interaction']]
@@ -39,16 +40,41 @@ num_vars = ['#event_within_month', 'tranformed_fatality', 'days_from_19970101','
 X_numeric = final_data[num_vars].values
 X_categorical = final_data[cat_vars].values
 
+## number of components in MCA
+n_components = 4
+
+
+
+mca = prince.MCA(
+    n_components=n_components,
+    n_iter=300,
+    copy=True,
+    check_input=True,
+    engine='sklearn',
+    random_state=42
+)
+mca = mca.fit(X_categorical)
+x_cat_embedding = mca.transform(X_categorical)
+
+
+# =============================================================================
+# ## onehot encode categorical variables
+# encoder = OneHotEncoder()
+# X_categorical_encoded = encoder.fit_transform(X_categorical)
+# =============================================================================
+
 ## standardize numerical varialbes
 scaler = StandardScaler()
 X_numeric_scaled = scaler.fit_transform(X_numeric)
 
-## onehot encode categorical variables
-encoder = OneHotEncoder()
-X_categorical_encoded = encoder.fit_transform(X_categorical)
+X = np.concatenate([X_numeric, x_cat_embedding], axis = 1)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-## concatenate numerical and one_hot encoded variables
-X = np.concatenate([X_numeric_scaled, X_categorical_encoded.toarray()], axis = 1)
+# =============================================================================
+# ## concatenate numerical and one_hot encoded variables
+# X = np.concatenate([X_numeric_scaled, X_categorical_encoded.toarray()], axis = 1)
+# =============================================================================
 
 ## define a customized distance metric
 def customized_dist(x, y, w1=0.5, w2=0.5):
@@ -57,14 +83,16 @@ def customized_dist(x, y, w1=0.5, w2=0.5):
     y_num = y[:5]
     x_dummy = x[5:]
     y_dummy = y[5:]
-    cosin_dist = distance.cosine(x_num, y_num)
+    #cosin_dist = distance.cosine(x_num, y_num)
+    cosin_dist = pairwise_distances(x_num, y_num, metric = 'cosine')
     jaccard_dist = distance.jaccard(x_dummy, y_dummy)
     
     return w1*0.5*cosin_dist + w2*jaccard_dist
 
 
 
-def gower_distances(X, Y=None, categorical_features=None, scale=True,
+x_cat_embedding = mca.transform(X_categorical)
+
                     
                     
                     min_values=None, scale_factor=None):
@@ -196,42 +224,52 @@ def gower_distances(X, Y=None, categorical_features=None, scale=True,
         else:
             D = nan_hamming / valid_cat
     return D
-# =============================================================================
-# nn = NearestNeighbors(n_neighbors=5, metric=customized_dist, metric_params={'w1':0.5, 'w2':0.5})
-# nn.fit(X)
-# 
-# distances = nn.radius_neighbors_graph(X)
-# db = DBSCAN(metric='precomputed')
-# db.fit(distances)
-# =============================================================================
+
+
+dbscan = DBSCAN(n_jobs = 7, eps = 1, min_samples=100)
+clusters_db = dbscan.fit(X_scaled)
+labels_db= clusters_db.labels_
+np.unique(labels_db, return_counts = True)
+
+result = np.column_stack([actor_event.data_id.values, labels_db])
+result_data = pd.DataFrame(result, columns=['data_id','cluster_label'])
+result_data.to_csv('clustering_result.csv')
 
 
 
-
-dbscan = DBSCAN(eps=0.01, min_samples=5, metric=customized_dist, metric_params={'w1':0.5, 'w2':0.5},
-                    n_jobs = -1)
-clusters = dbscan.fit_predict(X[:10000,])
-print('done')
-
-# =============================================================================
-# mbk = MiniBatchKMeans(n_clusters=5, batch_size=5000, me)
-# clusters = mbk.fit_predict(X)
-# =============================================================================
+dbscan_numeric = DBSCAN(n_jobs = 7, eps = 0.5, min_samples=100)
+clusters_db_numeric = dbscan_numeric.fit(X_numeric_scaled)
+labels_db_numeric= clusters_db_numeric.labels_
+np.unique(labels_db_numeric, return_counts = True)
 
 
+###### check feature importance
+from sklearn.ensemble import GradientBoostingClassifier
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
 
-# =============================================================================
-# A = kneighbors_graph(X, 5)
-# distances = pdist(X, metric='euclidean')
-# 
-# # Use Ward's method to build a hierarchical clustering tree
-# linkage_matrix = linkage(distances, method='ward')
-# 
-# # Determine the number of clusters using the dendrogram and a threshold height
-# threshold = 5.0
-# clusters = fcluster(linkage_matrix, t=threshold, criterion='distance')
-# 
-# spectral = SpectralClustering(n_clusters=5, affinity='precomputed_nearest_neighbors', n_neighbors = 5)
-# # Fit the estimator
-# labels = spectral.fit_predict(A)
-# =============================================================================
+y = labels_db
+X_cat = final_data[cat_vars]
+
+for label in cat_vars:
+    X_cat[label] = LabelEncoder().fit_transform(X_cat[label])
+
+X_num = final_data[num_vars].values
+X_train = np.concatenate([X_num, X_cat.values], axis = 1)
+
+
+
+clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1,
+                                 max_depth=5, random_state=0).fit(X_train, y)
+clf.score(X_train, y)
+
+feature_importance = clf.feature_importances_
+feature_names = num_vars + cat_vars
+
+plt.figure(figsize=(8, 8))
+plt.subplots_adjust(bottom=0.25)
+ax = sns.barplot(data = pd.DataFrame(data = {'name':feature_names,'importance':feature_importance}),
+            x = 'name', y = 'importance')
+ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+plt.savefig("feature_importance.png", dpi=300)
