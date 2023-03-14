@@ -4,12 +4,13 @@
 library(clustertend)
 library(NbClust)
 library(factoextra)
-library(ClusterR)
+library(ClusterR) # Distance matrix computation 
 library(fpc)
 library(clusterSim)
 library(psych)
 library(FactoMineR) # MCA 
 library(clustMixType)
+library(hopkins)
 library(dplyr)
 library(Rtsne)
 library(ggraph)
@@ -18,6 +19,16 @@ library(proxy)
 library(tidyverse)
 library(kernlab)
 library(dbscan)
+
+#===============================================================
+# Auxiliary functions 
+#===============================================================
+jaccard <- function(a, b) {
+  intersection = length(intersect(a, b))
+  union = length(a) + length(b) - intersection
+  return (1-(intersection/union))
+}
+
 #================================================================
 sample_data = read.csv("actor&event.csv")
 proj_data = read.csv("data.csv")
@@ -30,62 +41,54 @@ time_fatality_data2 <- time_fatality_data[, -c(1,2)]
 # Combined data 
 #========================================================================
 combined_data <- cbind(actor_event_geolocation_data, time_fatality_data2) 
-# Data for south Africa
-Southern_Africa <- filter(combined_data, region == "Southern Africa")
 #=======================================================================
-SA = Southern_Africa[,-1]
-SA2 = SA[,-1]
-SA3 = SA2[,-3]
-
-#=============================================================================
-# jaccard matrix
-#============================================================================
-jaccard <- function(a, b) {
-  intersection = length(intersect(a, b))
-  union = length(a) + length(b) - intersection
-  return (intersection/union)
-}
-# Numerical part of the data
-SA_num <- SA3[,c(4,5,6,7,8)]
-scaled_sa_num = scale(SA_num)
-#categorical paprt of the data 
-SA_Cat <- SA3[, c(1,2,3)]
-SA_cat_mat <- as.matrix(SA_Cat[1:5000,])
+new_combined_data <- combined_data[,-c(1,2)]
+# correlation vector between MCA Euclidean similarity matrix and 1/2(Jaccard + Euclidean)
+p = 10
+Cor <- numeric(p)
+for (k1 in 1:p){
+sample_combined_data <- sample_n(new_combined_data, 3000)
+sample_num <- sample_combined_data[, 5:9]
+sample_num <- as.data.frame(scale(sample_num))
+sample_cat <- sample_combined_data[,c(1:4)]
 #
-# Jaccard Matrix
-JM <- matrix(data = NA, nrow = nrow(SA_cat_mat), ncol= nrow(SA_cat_mat))
-for (i in 1:nrow(SA_cat_mat)){
-  for (j in 1:nrow(SA_cat_mat)){
-    a = SA_cat_mat[i,]
-    b <- SA_cat_mat[j,]
-    JM[i,j] <- jaccard(a,b)
+# matrix of categorical variables 
+sample_cat_mat <- as.matrix(sample_cat) 
+#=============================================================================
+# jaccard similarity matrix  
+#============================================================================
+JM <- matrix(data = NA, nrow = nrow(sample_cat_mat), ncol= nrow(sample_cat_mat))
+for (i1 in 1:nrow(sample_cat_mat)){
+  for (j1 in 1:nrow(sample_cat_mat)){
+    a = sample_cat_mat[i1,]
+    b <- sample_cat_mat[j1,]
+    JM[i1,j1] <- jaccard(a,b)
   }
 }
-JM[1:5,1:5]
-#
+Jac_mat <- as.matrix(JM)
 # Euclidean similarity 
-EM <- daisy(scaled_sa_num[1:5000,], metric = "euclidean")
-EM_mat <- as.matrix(EM)
-sim_matrix <- 0.5*(EM_mat + JM) 
-sim_matrix[1:5,1:5]
+EM <- distance_matrix(sample_num, method = "euclidean", upper = TRUE, diagonal = TRUE)
+Euclid_mat <- as.matrix(EM)
+sim_matrix <- 0.5*(Euclid_mat + Jac_mat) 
 # #======================================================================
 # # MCA, Changing categorical variables into numerical variable
 # #======================================================================
-SA_Cat$interaction <-as.factor(SA_Cat$interaction)
-res.mca1 <- MCA(X=SA_Cat, graph = FALSE)
+sample_cat$interaction <-as.factor(sample_cat$interaction)
+res.mca1 <- MCA(X=sample_cat, graph = FALSE)
 mca1_obs_df = data.frame(res.mca1$ind$coord)
+#
 # 
 # # Creating new data set using 
-new_data <- cbind(mca1_obs_df,SA_num)
-scaled_new_data <- scale(new_data)
+new_data <- cbind(mca1_obs_df,sample_num)
+scaled_new_data <- as.data.frame(scale(new_data))
 # 
-sca2 <- scaled_new_data[1:5000,] 
 # new similarity matrix 
-sim2 = daisy(sca2, metric = "euclidean")
+sim2 = distance_matrix(scaled_new_data, method = "euclidean", upper = TRUE, diagonal = TRUE)
 sim_matrix2 <- as.matrix(sim2)
-
 v1 = as.vector(sim_matrix)
 v2 = as.vector(sim_matrix2)
 r = cor(v1,v2)
-r 
+Cor[k1] = r
+}
+
 
