@@ -1,0 +1,260 @@
+\documentclass{article}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+
+<< echo=TRUE, results=hide>>=
+library(dplyr)
+library(ggplot2)
+#library(mapview)
+library(tidyverse)
+library(ggmap)
+
+# Data upload 
+proj_data = read.csv("data.csv")
+var_int = c("region", "country","admin1",
+            "admin2","admin3","location", "latitude",
+            "longitude","geo_precision","source","source_scale")
+#glimpse(proj_data)
+eda = proj_data[, var_int] 
+total <- length(t(eda))
+#sum(is.na(eda))
+# Checking missing values 
+missing <- sum(eda == "")
+missing/total
+sum(is.na(eda))
+sum(eda$region=="")
+sum(eda$country=="")
+sum(eda$admin1=="")
+sum(eda$admin2=="")
+sum(eda$admin3=="")
+sum(eda$location=="")
+sum(eda$latitude=="")
+sum(eda$longitude=="")
+sum(eda$geo_precision=="")
+sum(eda$source=="")
+sum(eda$source_scale=="")
+#eda[eda$admin1=="",]
+#eda[eda$admin2=="",]
+length(t(eda))
+
+@
+Around $4.73\%$ data are missing. There some administrative units missing in the data: 2 from  admin1, 2408in admin2, and 159501 in admin3. However, there are no missing values for location, latitude, and longitude. 
+
+
+<<echo= TRUE, results = hide>>=
+#-----------------------------------------------------------------------------------
+# Final data for the project 
+#-----------------------------------------------------------------------------------
+new_data = read.csv("actor_event_geolocation_data.csv")
+new_data <- new_data[, -c(1,2)]
+@
+
+<< echo=TRUE, results=hide>>=
+#--------------------------------------------------------------------
+# The variable region
+#-------------------------------------------------------------
+region_summ <- eda %>% group_by(region) %>%summarise(count=n())%>%arrange(desc(count))
+region_summ %>% ggplot(aes(y=region, x = count, fill = -count)) + 
+geom_bar(stat = "identity") + 
+ggtitle("Number of events by region") +
+scale_x_continuous(name = "Number of events") +
+theme_classic()
+@
+
+\textbf{region:} Africa has been divided into 5 regions: Eastern, Western, Middle, Northern, and Southern. In terms of the number of events, Eastern Africa is ranked first and Caribbean region tanks last. The second rank goes to South Asia. 
+
+
+
+
+<< results=hide>>=
+#---------------------------------------------------------------------------
+# The variable country 
+#-------------------------------------------------------------
+country_summ <- eda %>% group_by(country) %>%summarise(count=n())%>%arrange(desc(count))
+country_summ[1:20, ]
+tail(country_summ)
+country_summ[1:57, ] %>% ggplot(aes(y= country, x = count, fill = -count)) + 
+   geom_bar(stat = "identity") + 
+   ggtitle("Top 10 countries by number of events") +
+   scale_x_continuous(name = "Number of events") +
+  theme_classic()
+summary(country_summ$count)
+country_summ_1000=country_summ[country_summ$count >=1000,]
+@
+
+Fifty seven countries have recored event of political violence. In terms of the number of events, Somalia, Nigeria, and Democratic Republic of Congo take the first three places, and Sao Tome Principe, Seychelles, and Saint Helena record smallest number of events. There are 52 countries that recorded at least 1000 events. This sugeests that we want to include all the countries in the analysis. 
+
+
+
+\begin{figure}[ht!]
+\includegraphics[]{country.b}
+\end{figure}
+
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable admin 1
+#-------------------------------------------------------------
+admin1_summ <- eda %>% group_by(admin1) %>%summarise(count=n())%>%arrange(desc(count))
+sum(eda$admin1=="")
+admin1_summ[1:100, ] %>% ggplot(aes(y= admin1, x = count, fill = -count)) + 
+   geom_bar(stat = "identity") + 
+   ggtitle("Top 10 provincial level administrations by number of events") +
+   scale_x_continuous(name = "Number of events") +
+  theme_classic()
+admin1_summ_100=admin1_summ[admin1_summ$count >=100,]
+@
+The variable admin1 refers to the administrative unit equivalent to provincial level or similar. In terms of the number of events, Banadir and Nord-Kivu dominates the most. Also, there are 439 provinces that record at least 100 events. 
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable admin2
+#----------------------------------------------------------------------------
+admin2_summ <- eda %>% group_by(admin2) %>%summarise(count=n())%>%arrange(desc(count))
+sum(eda$admin2=="")
+admin2_summ[1:10, ]
+admin2_summ[1:10, ] %>% ggplot(aes(y= admin2, x = count)) + 
+   geom_bar(stat = "identity", fill = "darkgreen") + 
+   ggtitle("Top 10 provincial level administrations by number of events excluding missing ones") +
+   scale_x_continuous(name = "Number of events") +
+  theme_classic()
+
+@
+
+The variable admin2 refers to the administrative unit equivalent to county level or similar. It seems that Banadir is in both admin1 and admin2. There are 2408 missing values admin2. It seems that admin2 is not that useful. 
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable admin3
+#----------------------------------------------------------------------------
+admin3_summ <- eda %>% group_by(admin3) %>%summarise(count=n())%>%arrange(desc(count))
+sum(eda$admin3=="")
+admin3_summ[1:10, ]
+admin3_summ[2:11, ] %>% ggplot(aes(y= admin3, x = count)) + 
+   geom_bar(stat = "identity", fill = "darkgreen") + 
+   ggtitle("Top 10 district level administrations by number of events excluding missing places") +
+   scale_x_continuous(name = "Number of events") +
+  theme_classic()
+@
+
+The variable admin3 refers to the administrative unit equivalent to district level or similar. There are 7692 records of such administrative units where events occurred. There are district level units for 159501 events. 
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable location
+#----------------------------------------------------------------------------
+summary(eda$location)
+location_summ <- eda %>% group_by(location) %>%summarise(count=n())%>%arrange(desc(count))
+location_summ[1:20, ] %>% ggplot(aes(y= location, x = count)) + 
+   geom_bar(stat = "identity", fill = "darkorange") + 
+   ggtitle("Top 10 locations by number of events") +
+   scale_x_continuous(name = "Number of events") +
+  theme_classic()
+@
+
+The variable location refers to a village or a town. The cities recording larger number of violences in Northern Africa and Eastern Africa. 
+
+<<results=hide>>=
+@
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable latitude
+#----------------------------------------------------------------------------
+summary(eda$latitude)
+sum(is.na(eda$latitude))
+sum(is.na(eda$longitude))
+@
+
+The variable latitude ranges from -34.710.92 to 37.282 with median of 6.310. This suggest the number of events recorded in the nor
+
+<<results=hide>>=
+#----------------------------------------------------------------------------
+# the variable longitude
+#----------------------------------------------------------------------------
+summary(eda$longitude)
+#The variable latitude ranges from -117.08 to 117.51 with median 42.67. 
+@
+
+<<results=hide>>=
+#---------------------------------------------------------------------------
+# the variable geo_precision
+#---------------------------------------------------------------------------
+precision_summ <- eda %>% group_by(geo_precision) %>%summarise(count=n())%>%arrange(desc(count))
+
+precision_summ$count/(sum(precision_summ$count))
+
+precision_summ %>% ggplot(aes(y= count, x = geo_precision)) + 
+   geom_bar(stat = "identity", fill = "darkgreen") + 
+   ggtitle("Summary of geo_precision") +
+   scale_x_continuous(name = "geo_precision_type") +
+  theme_classic()
+@
+The variable geo-precision ranges from 1 to 3. Here 1 refers to the highest precision; 2 refers to the general area where an event took place (not the precise location); and 3 means a larger region is mentioned (it is the closest natural location). There are 217453 events labelled as 2 and 24284. Approximately, sixty eight percentage of events are reported with highest precision. 
+
+<<results=hide>>=
+#---------------------------------------------------------------------------
+# the variable source
+#---------------------------------------------------------------------------
+source_summ <- eda %>% group_by(source) %>%summarise(count=n())%>%arrange(desc(count))
+
+source_summ[1:10,] %>% ggplot(aes(y= source, x = count)) + 
+   geom_bar(stat = "identity", fill = "darkgreen") + 
+   ggtitle("top 10 sources") +
+   scale_x_continuous(name = "geo_precision_type") +
+  theme_classic()
+rel_freq <- source_summ$count/sum(source_summ$count)
+source_summ$rel_freq = rel_freq
+source_summ[1:10,]
+@
+
+
+
+<<results=hide>>=
+#---------------------------------------------------------------------------
+# the variable source scale
+
+#---------------------------------------------------------------------------
+source_scale_summ <- eda %>% group_by(source_scale) %>%summarise(count=n())%>%arrange(desc(count))
+
+source_scale_summ  %>% ggplot(aes(y= source_scale, x = count)) + 
+   geom_bar(stat = "identity", fill = "darkgreen") + 
+   ggtitle("summary of source scale") +
+   scale_x_continuous(name = "geo_precision_type") +
+  theme_classic()
+
+@ 
+
+Source scale refers to level at which source used for coding an event operate. A large number of sources operate at National level. 
+
+<<results=hide>>=
+#--------------------------------------------------------------------------
+library(mapview)
+library(sf)
+eda$long_lat = paste("(",eda$longitude, eda$latitude, ")")
+eda_long_lat = eda$long_lat
+head(eda_long_lat)
+table <- as.data.frame(table(eda_long_lat))
+new_table = table%>% arrange(desc(Freq))
+new_table[new_table$long_lat=="( 45.3337 2.0414 )", ]
+#%>%top_n(10)
+#table %>% top_n(100, wt = "Freq")
+#eda_east <- eda[eda$region=="Eastern Africa",]
+#mapview(eda_east, xcol = "longitude", ycol = "latitude", crs = 4269, grid = FALSE)
+colnames(new_table) = c("long_lat", "Freq")
+new_eda = eda[,c("location","long_lat")] %>% inner_join(new_table)
+new_ead = new_eda %>% arrange(desc(Freq))%>% unique()
+
+head(new_ead)
+
+head(new_ead)
+#colnames(eda)
+ 
+
+#--------------------------------------------------------------------------
+@
+
+
+\end{document}
